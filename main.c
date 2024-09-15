@@ -5,9 +5,12 @@
 
 #include <ncurses.h>
 
+#define ENTER 10
+#define UP_ARROW 259
+#define DOWN_ARROW 258
+
 #define ctrl(x) ((x) & 0x1f)
 #define SHELL "[fnsh]$ "
-#define ENTER 10
 #define DATA_START_CAPACITY 128
 
   #define ASSERT(cond, ...) \
@@ -46,10 +49,15 @@ typedef struct {
   size_t capacity;
 } Strings;
 
+void clear_line(size_t line) {
+  for(size_t i = sizeof(SHELL)-1; i < sizeof(SHELL)-1+32; i++) mvprintw(line, 0 ," ");
+}
+
 int main() {
   initscr();		
   raw();
   noecho();
+  keypad(stdscr,TRUE);
 
   bool QUIT = false;
   int in;
@@ -57,11 +65,13 @@ int main() {
   String command = {0};
   Strings command_history = {0};
   size_t line = 0;
+  size_t command_max = 0;
 
   while(!QUIT) {
+    clear_line(line);
     mvprintw(line, 0 , SHELL);
     mvprintw(line, 0+sizeof(SHELL)-1,"%.*s",(int)command.count, command.data);
-    
+
     in = getch();
     switch(in) {
       case ctrl('q'): 
@@ -70,10 +80,24 @@ int main() {
       //case KEY_ENTER:
       case ENTER:
         line++;
+        clear_line(line);
         mvprintw(line, 0 ,"`%.*s` is not recognised as an internal or external command", (int)command.count, command.data);
         line++;
         DA_APPEND(&command_history, command);
+        if(command_history.count > command_max) command_max = command_history.count;
         command = (String){0};
+        break;
+      case UP_ARROW:
+        if(command_history.count > 0) {
+          command_history.count--;
+          command = command_history.data[command_history.count];
+        }
+        break;
+      case DOWN_ARROW:
+        if(command_history.count < command_max) {
+          command_history.count++;
+          command = command_history.data[command_history.count];
+        }
         break;
       default:
         DA_APPEND(&command, in);
