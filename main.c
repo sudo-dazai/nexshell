@@ -53,9 +53,15 @@ typedef struct {
   size_t capacity;
 } Strings;
 
-void handle_command(char* file, char** args) {
-  int pid = fork();
+void handle_command(char **args, size_t *line) {
+	char buf[4096] = {0};
+	int filedes[2];
+
+	if(pipe(filedes) < 0) {
+		printw("error %s\n", strerror(errno));
+	}
   int status;
+	int pid = fork();
 
   if (pid < 0) {
     //ERROR.....
@@ -63,17 +69,35 @@ void handle_command(char* file, char** args) {
     return;
   } else if(!pid) {
     //CHILD PROCESS
+    close(filedes[0]);
+		if(dup2(filedes[1], STDOUT_FILENO) < 0) {
+			printw("error %s\n", strerror(errno));
+		}
+    close(filedes[1]);
+
     if(execvp(args[0], args) < 0) {
-      printw("ERROR: %s ", strerror(errno));
+      endwin();
+			fprintf(stderr, "error %s\n", strerror(errno));
+			exit(1);
     }
+
   } else {
     //PARENT PROCESS
-    pid_t wpid = waitpid(pid, &status, 0);
-    (void) wpid;
+    close(filedes[1]);
+    int wpid = waitpid(pid, &status, 0);
     while(!WIFEXITED(status) && !WIFSIGNALED(status)) {
       wpid = waitpid(pid, &status, 0);
     } 
-
+    int nbytes = read(filedes[0], buf, sizeof(buf)-1);
+		if(nbytes < 0) {
+			printw("error %s\n", strerror(errno));
+		}
+		close(filedes[0]);
+		mvprintw(*line, 0, "%s", buf);
+		for(size_t i = 0; buf[i] != '\0'; i++) {
+			if(buf[i] == '\n') *line += 1;
+		}
+		refresh();
   }
 }
 
@@ -102,6 +126,7 @@ char** parse_command(char* command) {
     args[args_curr++] = curr;
     curr = strtok(NULL, " ");
   }
+  args[args_curr] = NULL;
   return args;
 }
 
@@ -137,8 +162,7 @@ int main() {
           args = parse_command(str_to_cstr(command));
         }
         if(args != NULL) {
-          line++;
-          handle_command(args[0], args);
+          handle_command(args, &line);
           DA_APPEND(&command_history, command);
           if(command_history.count > command_max) command_max = command_history.count;
         }
