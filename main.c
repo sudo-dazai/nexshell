@@ -2,6 +2,10 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
+
+#include <sys/wait.h>
 
 #include <ncurses.h>
 
@@ -49,8 +53,56 @@ typedef struct {
   size_t capacity;
 } Strings;
 
+void handle_command(char* file, char** args) {
+  int pid = fork();
+  int status;
+
+  if (pid < 0) {
+    //ERROR.....
+    printw("ERROR: pid < 0 && %s ", strerror(errno));
+    return;
+  } else if(!pid) {
+    //CHILD PROCESS
+    if(execvp(args[0], args) < 0) {
+      printw("ERROR: %s ", strerror(errno));
+    }
+  } else {
+    //PARENT PROCESS
+    pid_t wpid = waitpid(pid, &status, 0);
+    (void) wpid;
+    while(!WIFEXITED(status) && !WIFSIGNALED(status)) {
+      wpid = waitpid(pid, &status, 0);
+    } 
+
+  }
+}
+
 void clear_line(size_t line) {
   for(size_t i = sizeof(SHELL)-1; i < sizeof(SHELL)-1+32; i++) mvprintw(line, 0 ," ");
+}
+
+char* str_to_cstr(String str) {
+  char *cstr = malloc(sizeof(char)*str.count+1);
+  memcpy(cstr,str.data,sizeof(char)*str.count);
+  cstr[str.count] = '\0';
+  return cstr;
+}
+
+char** parse_command(char* command) {
+  char* curr = strtok(command, " ");
+  if(curr == NULL) return NULL;
+  size_t args_s = 8;
+  char** args = malloc(sizeof(char*)*args_s);
+  size_t args_curr = 0;
+  while(curr) {
+    if(args_curr >= args_s) {
+      args_s *= 2;
+      args = realloc(args, sizeof(char*)*args_s);
+    }
+    args[args_curr++] = curr;
+    curr = strtok(NULL, " ");
+  }
+  return args;
 }
 
 int main() {
@@ -80,11 +132,16 @@ int main() {
       //case KEY_ENTER:
       case ENTER:
         line++;
-        clear_line(line);
-        mvprintw(line, 0 ,"`%.*s` is not recognised as an internal or external command", (int)command.count, command.data);
-        line++;
-        DA_APPEND(&command_history, command);
-        if(command_history.count > command_max) command_max = command_history.count;
+        char** args = NULL;
+        if(command.count > 0) {
+          args = parse_command(str_to_cstr(command));
+        }
+        if(args != NULL) {
+          line++;
+          handle_command(args[0], args);
+          DA_APPEND(&command_history, command);
+          if(command_history.count > command_max) command_max = command_history.count;
+        }
         command = (String){0};
         break;
       case UP_ARROW:
