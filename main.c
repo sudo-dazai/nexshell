@@ -14,7 +14,7 @@
 #define DOWN_ARROW 258
 
 #define ctrl(x) ((x) & 0x1f)
-#define SHELL "[fnsh]$ "
+#define SHELL "[nex]$ "
 #define DATA_START_CAPACITY 128
 
   #define ASSERT(cond, ...) \
@@ -58,29 +58,27 @@ void handle_command(char **args, size_t *line) {
 	int filedes[2];
 
 	if(pipe(filedes) < 0) {
-		printw("error %s\n", strerror(errno));
+		mvprintw(*line, 0,"error %s\n", strerror(errno));
 	}
   int status;
 	int pid = fork();
 
   if (pid < 0) {
     //ERROR.....
-    printw("ERROR: pid < 0 && %s ", strerror(errno));
+    mvprintw(*line, 0,"ERROR: pid < 0 && %s ", strerror(errno));
     return;
   } else if(!pid) {
     //CHILD PROCESS
     close(filedes[0]);
 		if(dup2(filedes[1], STDOUT_FILENO) < 0) {
-			printw("error %s\n", strerror(errno));
+			printf("error %s\n", strerror(errno));
 		}
     close(filedes[1]);
 
     if(execvp(args[0], args) < 0) {
-      endwin();
-			fprintf(stderr, "error %s\n", strerror(errno));
-			exit(1);
+			printf("ERROR: %s\n", strerror(errno)); 
     }
-
+    exit(1);
   } else {
     //PARENT PROCESS
     close(filedes[1]);
@@ -90,7 +88,7 @@ void handle_command(char **args, size_t *line) {
     } 
     int nbytes = read(filedes[0], buf, sizeof(buf)-1);
 		if(nbytes < 0) {
-			printw("error %s\n", strerror(errno));
+			mvprintw(*line,0,"error %s\n", strerror(errno));
 		}
 		close(filedes[0]);
 		mvprintw(*line, 0, "%s", buf);
